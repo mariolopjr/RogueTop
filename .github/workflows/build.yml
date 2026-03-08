@@ -139,7 +139,8 @@ jobs:
             wget \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            pkg-config
 
       - name: (Linux) (ARMv7) Install dependencies
         if: matrix.config.target == 'armv7-unknown-linux-gnueabihf'
