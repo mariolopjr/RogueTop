@@ -1,5 +1,6 @@
 # This script requires Git, pnpm, and Node.js to be installed.
-git clone https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1
+# If POKEROGUE_BRANCH is set, clone that specific tag/branch; otherwise clone HEAD.
+git clone https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1 ${POKEROGUE_BRANCH:+--branch "$POKEROGUE_BRANCH"}
 
 cd src-ext
 
