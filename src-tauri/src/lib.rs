@@ -37,7 +37,7 @@ pub fn run() {
       mods::plugin::load_all_plugins
     ])
     .on_window_event(|_window, event| match event {
-      tauri::WindowEvent::Destroyed { .. } => {
+      tauri::WindowEvent::Destroyed => {
         util::discord_rpc::remove_activity();
       }
       tauri::WindowEvent::CloseRequested { .. } => {
