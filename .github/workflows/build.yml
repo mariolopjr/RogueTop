@@ -105,7 +105,12 @@ jobs:
       - name: (Linux) ARM sources.list
         if: matrix.config.target == 'aarch64-unknown-linux-gnu' || matrix.config.target == 'armv7-unknown-linux-gnueabihf'
         run: |
-          # Add [arch=amd64] to the initial entries of the sources.list
+          # Restrict default sources to amd64 only
+          # Ubuntu Noble uses DEB822 format in ubuntu.sources; traditional sources.list is empty
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i '/^Types: deb$/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          # Also handle traditional format for compatibility
           sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
 
           echo "deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted" | sudo tee -a /etc/apt/sources.list
@@ -178,7 +183,7 @@ jobs:
         shell: bash
         run: |
           POKEROGUE_VERSION="${{ needs.check-version.outputs.version }}"
-          git clone --depth 1 ${POKEROGUE_VERSION:+--branch "$POKEROGUE_VERSION"} https://github.com/pagefaultgames/pokerogue.git src-ext
+          git clone --recurse-submodules -j8 --depth 1 ${POKEROGUE_VERSION:+--branch "$POKEROGUE_VERSION"} https://github.com/pagefaultgames/pokerogue.git src-ext
 
           cd src-ext
 
