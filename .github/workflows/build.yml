@@ -82,11 +82,10 @@ jobs:
           - 'offline'
 
     steps:
-      - uses: actions-rust-lang/setup-rust-toolchain@v1.8
-      - uses: pnpm/action-setup@v3
-
       - name: Checkout
         uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.8
+      - uses: pnpm/action-setup@v3
 
       - name: Setup node
         uses: actions/setup-node@v4
