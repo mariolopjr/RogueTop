@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm tauri:*)",
+      "Bash(pnpm:*)",
+      "Bash(just:*)",
+      "Bash(gh api:*)",
+      "Bash(cargo test:*)",
+      "Bash(cargo build:*)",
+      "Bash(gh pr:*)"
+    ]
+  }
+}

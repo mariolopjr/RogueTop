@@ -26,8 +26,13 @@ pub fn start_server(app: tauri::AppHandle) {
     // If this is a request to the API, hand it off
     if path.starts_with("api/") {
       let result = crate::offline::api::handle_request(&mut request);
+      let status = tiny_http::StatusCode::from(result.status);
+      let content_type =
+        Header::from_str(&format!("Content-Type: {}", result.content_type)).unwrap();
+      let mut response = Response::from_string(result.body).with_status_code(status);
+      response.add_header(content_type);
       request
-        .respond(Response::from_string(result))
+        .respond(response)
         .expect("failed to respond to request");
       continue;
     }
