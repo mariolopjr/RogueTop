@@ -70,23 +70,14 @@ function proxyFetch() {
     // @ts-expect-error womp womp
     const response: { status: number, body: string } = await __TAURI_INTERNALS__.invoke('api_request', {
       url,
-      options: JSON.stringify(options)
+      options: JSON.stringify(options ?? {})
     })
 
     // Adherence to what most scripts will expect to have available when they are using fetch(). These have to pretend to be promises
     return {
       json: async () => JSON.parse(response.body),
       text: async () => response.body,
-      arrayBuffer: async () => {
-        // Create a new arraybuffer
-        const buffer = new ArrayBuffer(response.body.length)
-        const view = new Uint8Array(buffer)
-
-        // Copy the data over
-        response.body.split('').forEach((char: string, i: number) => view[i] = char.charCodeAt(0))
-
-        return buffer
-      },
+      arrayBuffer: async () => new TextEncoder().encode(response.body).buffer,
       ok: response.status >= 200 && response.status < 300,
       status: response.status,
     }

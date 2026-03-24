@@ -22,9 +22,9 @@ if exist "src-ext\" (
     )
 ) else (
     if defined POKEROGUE_BRANCH (
-        git clone --recurse-submodules -j8 https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1 --branch "%POKEROGUE_BRANCH%"
+        git clone --recurse-submodules -j8 --depth 1 --branch "%POKEROGUE_BRANCH%" https://github.com/pagefaultgames/pokerogue.git src-ext
     ) else (
-        git clone --recurse-submodules -j8 https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1
+        git clone --recurse-submodules -j8 --depth 1 https://github.com/pagefaultgames/pokerogue.git src-ext
     )
 )
 
@@ -32,7 +32,11 @@ cd src-ext
 
 pnpm install
 
-@REM Append offline-mode env vars to .env (do not overwrite -- preserve upstream defaults)
+@REM Set offline-mode vars (idempotent: remove stale values first, then append)
+if exist .env (
+    findstr /v /c:"VITE_BYPASS_LOGIN=" /c:"VITE_SERVER_URL=" .env > .env.tmp 2>nul
+    move /y .env.tmp .env >nul
+)
 echo. >> .env
 echo VITE_BYPASS_LOGIN=1 >> .env
 echo VITE_SERVER_URL=http://localhost:8001 >> .env

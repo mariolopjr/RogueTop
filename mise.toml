@@ -2,7 +2,7 @@
 node = "latest"
 
 [hooks]
-postinstall = 'npx corepack enable'
+postinstall = 'corepack enable'
 
 [settings]
 experimental = true

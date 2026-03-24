@@ -81,11 +81,8 @@ pub fn get_plugins_path() -> PathBuf {
 
 pub fn get_saves_dir() -> PathBuf {
   let path = if config_is_local() {
-    std::env::current_exe()
-      .unwrap_or_default()
-      .parent()
-      .unwrap()
-      .join("saves")
+    let exe = std::env::current_exe().unwrap_or_default();
+    exe.parent().unwrap_or(std::path::Path::new(".")).join("saves")
   } else {
     let appdata = dirs::data_dir().unwrap_or_default();
     appdata.join("roguetop").join("saves")

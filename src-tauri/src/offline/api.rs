@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
+use base64::{engine::general_purpose, Engine as _};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tiny_http::Request;
@@ -38,10 +39,11 @@ pub fn api_request(url: String, options: String) -> ApiResponse {
   let body = options.body.clone().unwrap_or_default();
   let method = options.method.clone().unwrap_or_else(|| "GET".to_string());
 
-  // Strip the host portion; the game sends e.g. http://localhost:8001/account/info
+  // Strip the scheme+host; handles both http:// and https:// URLs
+  // e.g. http://localhost:8001/account/info or https://api.pokerogue.net/account/info
   let path = url
-    .split_once("http://")
-    .unwrap_or(("", ""))
+    .split_once("://")
+    .unwrap_or(("", &url))
     .1
     .split_once('/')
     .unwrap_or(("", ""))
@@ -282,7 +284,7 @@ pub fn route_request(
       let date = Utc::now().format("%Y-%m-%d").to_string();
       HandlerResponse {
         status: 200,
-        body: base64_encode(date.as_bytes()),
+        body: general_purpose::STANDARD.encode(date.as_bytes()),
         content_type: "text/plain",
       }
     }
@@ -336,40 +338,6 @@ fn parse_slot(params: &HashMap<String, String>) -> Option<u8> {
   Some(slot)
 }
 
-/// Standard base64 encoding (matches JavaScript's `btoa`)
-fn base64_encode(input: &[u8]) -> String {
-  const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let mut result = String::with_capacity(input.len().div_ceil(3) * 4);
-  let mut i = 0;
-  while i < input.len() {
-    let b0 = input[i] as u32;
-    let b1 = if i + 1 < input.len() {
-      input[i + 1] as u32
-    } else {
-      0
-    };
-    let b2 = if i + 2 < input.len() {
-      input[i + 2] as u32
-    } else {
-      0
-    };
-    result.push(CHARS[((b0 >> 2) & 0x3F) as usize] as char);
-    result.push(CHARS[(((b0 << 4) | (b1 >> 4)) & 0x3F) as usize] as char);
-    result.push(if i + 1 < input.len() {
-      CHARS[(((b1 << 2) | (b2 >> 6)) & 0x3F) as usize] as char
-    } else {
-      '='
-    });
-    result.push(if i + 2 < input.len() {
-      CHARS[(b2 & 0x3F) as usize] as char
-    } else {
-      '='
-    });
-    i += 3;
-  }
-  result
-}
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -383,14 +351,6 @@ mod tests {
     let mut m = HashMap::new();
     m.insert("slot".to_string(), slot.to_string());
     m
-  }
-
-  #[test]
-  fn test_base64_encode() {
-    // Matches JS: btoa("2026-03-23") === "MjAyNi0wMy0yMw=="
-    assert_eq!(base64_encode(b"2026-03-23"), "MjAyNi0wMy0yMw==");
-    assert_eq!(base64_encode(b""), "");
-    assert_eq!(base64_encode(b"Man"), "TWFu");
   }
 
   #[test]

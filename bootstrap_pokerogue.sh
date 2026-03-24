@@ -24,14 +24,18 @@ if [ -d "src-ext" ]; then
   fi
 else
   # Clone whether or not --update was supplied
-  git clone --recurse-submodules -j8 https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1 ${POKEROGUE_BRANCH:+--branch "$POKEROGUE_BRANCH"}
+  git clone --recurse-submodules -j8 --depth 1 ${POKEROGUE_BRANCH:+--branch "$POKEROGUE_BRANCH"} https://github.com/pagefaultgames/pokerogue.git src-ext
 fi
 
 cd src-ext || exit
 
 pnpm install
 
-# Append offline-mode env vars to .env (do not overwrite — preserve upstream defaults)
+# Set offline-mode vars (idempotent: remove stale values first, then append)
+if [ -f .env ]; then
+  grep -v '^VITE_BYPASS_LOGIN=\|^VITE_SERVER_URL=' .env > .env.tmp || true
+  mv .env.tmp .env
+fi
 printf '\nVITE_BYPASS_LOGIN=1\nVITE_SERVER_URL=http://localhost:8001\n' >> .env
 
 # Build in app mode: loads .env.app which sets VITE_SERVER_URL=http://localhost:8001,
