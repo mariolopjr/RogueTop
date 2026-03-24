@@ -1,0 +1,162 @@
+.name-manager {
+  justify-content: space-between;
+}
+
+/* Edit */
+.nm-edit {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  flex: 1;
+  padding: 1em 0 0;
+}
+
+.nm-title {
+  font-size: 1em;
+  font-weight: 900;
+  margin: 0 0 0.75em;
+  color: #fff;
+}
+
+.nm-input {
+  width: 80%;
+  background: var(--secondary);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 0.4em 0.7em;
+  font-size: 1em;
+  font-family: inherit;
+  font-weight: 700;
+  text-align: center;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.1s;
+}
+
+.nm-input:focus {
+  border-color: var(--button-primary);
+}
+
+.nm-known {
+  width: 80%;
+  margin-top: 1.2em;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4em;
+}
+
+.nm-known-label {
+  font-size: 0.75em;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.nm-known-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4em;
+}
+
+.nm-known-item {
+  background: var(--secondary);
+  color: #fff;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 0.25em 0.6em;
+  font-size: 0.85em;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+
+.nm-known-item:hover {
+  background: var(--button-primary);
+}
+
+.nm-known-item.active {
+  border-color: var(--button-primary);
+}
+
+/* Footer */
+.nm-footer {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  gap: 0.5em;
+  padding-bottom: 0;
+}
+
+.nm-back-btn,
+.nm-save-btn {
+  flex: 1;
+}
+
+.nm-back-btn button {
+  background-color: var(--secondary);
+}
+
+.nm-back-btn button:hover {
+  background-color: var(--primary);
+}
+
+/* Confirm */
+.nm-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  width: 100%;
+  gap: 1.5em;
+  padding: 1em;
+  box-sizing: border-box;
+}
+
+.nm-confirm-text {
+  font-size: 0.95em;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+  color: #fff;
+}
+
+.nm-actions {
+  display: flex;
+  flex-direction: column;
+  width: 80%;
+  gap: 0.5em;
+}
+
+.nm-btn {
+  width: 100%;
+  padding: 0.55em 1em;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.95em;
+  font-family: inherit;
+  font-weight: 900;
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+.nm-btn:hover {
+  opacity: 0.85;
+}
+
+.nm-btn-copy {
+  background-color: var(--button-primary);
+}
+
+.nm-btn-move {
+  background-color: #5b8dd9;
+}
+
+.nm-btn-nothing {
+  background-color: var(--secondary);
+}
