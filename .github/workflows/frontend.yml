@@ -3,11 +3,13 @@ name: Check frontend
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths-ignore:
       - '**.lock'
       - '**.rs'
       - '**.toml'
   pull_request:
+    branches: [main]
     paths-ignore:
       - '**.lock'
       - '**.rs'

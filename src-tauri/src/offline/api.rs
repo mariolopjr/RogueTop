@@ -339,7 +339,7 @@ fn parse_slot(params: &HashMap<String, String>) -> Option<u8> {
 /// Standard base64 encoding (matches JavaScript's `btoa`)
 fn base64_encode(input: &[u8]) -> String {
   const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
+  let mut result = String::with_capacity(input.len().div_ceil(3) * 4);
   let mut i = 0;
   while i < input.len() {
     let b0 = input[i] as u32;
