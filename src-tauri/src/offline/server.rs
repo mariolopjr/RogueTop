@@ -31,7 +31,9 @@ pub fn start_server(app: tauri::AppHandle) {
         Header::from_str(&format!("Content-Type: {}", result.content_type)).unwrap();
       let mut response = Response::from_string(result.body).with_status_code(status);
       response.add_header(content_type);
-      request.respond(response).expect("failed to respond to request");
+      request
+        .respond(response)
+        .expect("failed to respond to request");
       continue;
     }
 
