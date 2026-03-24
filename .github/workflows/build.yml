@@ -313,7 +313,7 @@ jobs:
           path: src-tauri/target/${{ matrix.config.target }}/release/bundle/dmg/*.dmg
 
   release:
-    needs: [build, version]
+    needs: [build, check-version]
     runs-on: ubuntu-latest
     if: needs.build.result == 'success' && (startsWith(github.ref, 'refs/tags/') || (github.event_name == 'schedule' && needs.build.should_build == 'true'))
     steps:
