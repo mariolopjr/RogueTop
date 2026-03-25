@@ -1,7 +1,20 @@
+use std::collections::HashMap;
+use std::fs;
+use std::path::Path;
+
+use base64::{engine::general_purpose, Engine as _};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use tiny_http::Request;
 
-use crate::{success, warn, LOCAL_URL};
+use crate::{success, warn};
+
+/// Shared response type used by handle_request and server.rs
+pub struct HandlerResponse {
+  pub status: u16,
+  pub body: String,
+  pub content_type: &'static str,
+}
 
 #[derive(Serialize, Deserialize)]
 struct Options {
@@ -9,29 +22,40 @@ struct Options {
   method: Option<String>,
 }
 
-#[tauri::command]
-pub fn api_request(url: String, options: String) -> String {
-  let client = reqwest::blocking::Client::new();
-  let options: Options = serde_json::from_str(&options).unwrap();
-  let body = options.body.clone().unwrap_or("".to_string());
-  let method = options.method.clone().unwrap_or("GET".to_string());
+#[derive(Serialize)]
+pub struct ApiResponse {
+  pub status: u16,
+  pub body: String,
+}
 
-  // Split the path from the full URL
+/// proxy a fetch call from the webview to the local server
+#[tauri::command]
+pub fn api_request(url: String, options: String) -> ApiResponse {
+  let client = reqwest::blocking::Client::new();
+  let options: Options = serde_json::from_str(&options).unwrap_or(Options {
+    body: None,
+    method: None,
+  });
+  let body = options.body.clone().unwrap_or_default();
+  let method = options.method.clone().unwrap_or_else(|| "GET".to_string());
+
+  // Strip the scheme+host; handles both http:// and https:// URLs
+  // e.g. http://localhost:8001/account/info or https://api.pokerogue.net/account/info
   let path = url
-    .split_once("http://")
-    .unwrap_or(("", ""))
+    .split_once("://")
+    .unwrap_or(("", &url))
     .1
     .split_once('/')
     .unwrap_or(("", ""))
     .1;
-  let url = format!("{}/api/{}", LOCAL_URL, path);
+  let forward_url = format!("{}/api/{}", crate::LOCAL_URL, path);
 
   let response = match method.as_str() {
-    "GET" => client.get(&url).send(),
-    "POST" => client.post(&url).body(body).send(),
-    "PUT" => client.put(&url).body(body).send(),
-    "DELETE" => client.delete(&url).send(),
-    _ => client.get(&url).send(),
+    "GET" => client.get(&forward_url).send(),
+    "POST" => client.post(&forward_url).body(body).send(),
+    "PUT" => client.put(&forward_url).body(body).send(),
+    "DELETE" => client.delete(&forward_url).send(),
+    _ => client.get(&forward_url).send(),
   };
 
   match response {
@@ -47,26 +71,30 @@ pub fn api_request(url: String, options: String) -> String {
       ApiResponse { status, body: text }
     }
     Err(e) => {
-      warn!("Error: {:?}", e);
-
-      "".to_string()
+      warn!("API request error: {:?}", e);
+      ApiResponse {
+        status: 500,
+        body: String::new(),
+      }
     }
   }
 }
 
-pub fn handle_request(request: &mut Request) -> String {
+/// Request handler called by the tiny_http server
+pub fn handle_request(request: &mut Request) -> HandlerResponse {
   let mut body = String::new();
+  let _ = request.as_reader().read_to_string(&mut body);
 
-  request.as_reader().read_to_string(&mut body).unwrap();
+  let full_path = request.url();
+  let after_api = full_path
+    .strip_prefix("/api/")
+    .or_else(|| full_path.strip_prefix("api/"))
+    .unwrap_or(full_path);
 
-  let path = request
-    .url()
-    .split_once("api/")
-    .unwrap_or(("", ""))
-    .1
-    .split_once('/')
-    .unwrap_or(("", ""))
-    .0;
+  let (path, query_str) = match after_api.split_once('?') {
+    Some((p, q)) => (p, q),
+    None => (after_api, ""),
+  };
 
   let params: HashMap<String, String> = query_str
     .split('&')
@@ -92,10 +120,6 @@ pub fn handle_request(request: &mut Request) -> String {
   route_request(method, path, &params, &body, &saves_dir)
 }
 
-// ---------------------------------------------------------------------------
-// Pure routing function (no tiny_http dependency — easy to unit-test)
-// ---------------------------------------------------------------------------
-
 pub fn route_request(
   method: &str,
   path: &str,
@@ -104,7 +128,6 @@ pub fn route_request(
   saves_dir: &Path,
 ) -> HandlerResponse {
   match (method, path) {
-    // --- Account -----------------------------------------------------------
     ("GET", "account/info") => {
       let username = crate::config::get_config()
         .name
@@ -132,7 +155,6 @@ pub fn route_request(
 
     ("GET", "account/logout") => ok_empty(),
 
-    // --- System save -------------------------------------------------------
     ("GET", "savedata/system/get") => {
       let file = saves_dir.join("system.json");
       match fs::read_to_string(&file) {
@@ -141,8 +163,8 @@ pub fn route_request(
           body: contents,
           content_type: "application/json",
         },
-        // 404 → game treats this as a new account and auto-generates default data,
-        // then calls system/update to persist it.
+        // game treats 404 as a new account and auto-generates default data,
+        // then calls system/update to persist it
         Err(_) => HandlerResponse {
           status: 404,
           body: String::new(),
@@ -174,7 +196,6 @@ pub fn route_request(
       }
     }
 
-    // --- Session save ------------------------------------------------------
     ("GET", "savedata/session/get") => {
       let slot = match parse_slot(params) {
         Some(s) => s,
@@ -237,7 +258,6 @@ pub fn route_request(
       content_type: "application/json",
     },
 
-    // --- Bulk update -------------------------------------------------------
     ("POST", "savedata/updateall") => {
       let value: serde_json::Value = match serde_json::from_str(body) {
         Ok(v) => v,
@@ -283,12 +303,11 @@ pub fn route_request(
       ok_empty()
     }
 
-    // --- Daily / stats -----------------------------------------------------
     ("GET", "daily/seed") => {
       let date = Utc::now().format("%Y-%m-%d").to_string();
       HandlerResponse {
         status: 200,
-        body: base64_encode(date.as_bytes()),
+        body: general_purpose::STANDARD.encode(date.as_bytes()),
         content_type: "text/plain",
       }
     }
@@ -299,7 +318,6 @@ pub fn route_request(
       content_type: "application/json",
     },
 
-    // --- Fallthrough -------------------------------------------------------
     _ => {
       warn!("Unimplemented API: {} {}", method, path);
       HandlerResponse {
@@ -311,11 +329,7 @@ pub fn route_request(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/// One-time migration: if flat JSON files exist in the saves root, move them into saves/Guest/
+/// One-time migration: if flat JSON files exist in the saves root, move them into saves/Guest
 fn migrate_flat_saves(saves_dir: &Path) {
   let sentinel = saves_dir.join("system.json");
   if !sentinel.exists() {
@@ -428,44 +442,6 @@ fn parse_slot(params: &HashMap<String, String>) -> Option<u8> {
   Some(slot)
 }
 
-/// Standard base64 encoding (matches JavaScript's `btoa`)
-fn base64_encode(input: &[u8]) -> String {
-  const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-  let mut result = String::with_capacity((input.len() + 2) / 3 * 4);
-  let mut i = 0;
-  while i < input.len() {
-    let b0 = input[i] as u32;
-    let b1 = if i + 1 < input.len() {
-      input[i + 1] as u32
-    } else {
-      0
-    };
-    let b2 = if i + 2 < input.len() {
-      input[i + 2] as u32
-    } else {
-      0
-    };
-    result.push(CHARS[((b0 >> 2) & 0x3F) as usize] as char);
-    result.push(CHARS[(((b0 << 4) | (b1 >> 4)) & 0x3F) as usize] as char);
-    result.push(if i + 1 < input.len() {
-      CHARS[(((b1 << 2) | (b2 >> 6)) & 0x3F) as usize] as char
-    } else {
-      '='
-    });
-    result.push(if i + 2 < input.len() {
-      CHARS[(b2 & 0x3F) as usize] as char
-    } else {
-      '='
-    });
-    i += 3;
-  }
-  result
-}
-
-// ---------------------------------------------------------------------------
-// Unit tests
-// ---------------------------------------------------------------------------
-
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -480,18 +456,6 @@ mod tests {
     m.insert("slot".to_string(), slot.to_string());
     m
   }
-
-  // --- base64 ---------------------------------------------------------------
-
-  #[test]
-  fn test_base64_encode() {
-    // Matches JS: btoa("2026-03-23") === "MjAyNi0wMy0yMw=="
-    assert_eq!(base64_encode(b"2026-03-23"), "MjAyNi0wMy0yMw==");
-    assert_eq!(base64_encode(b""), "");
-    assert_eq!(base64_encode(b"Man"), "TWFu");
-  }
-
-  // --- account endpoints ----------------------------------------------------
 
   #[test]
   fn test_account_info() {
@@ -519,8 +483,6 @@ mod tests {
     assert_eq!(r.status, 200);
     assert!(r.body.is_empty());
   }
-
-  // --- system save ----------------------------------------------------------
 
   #[test]
   fn test_system_get_not_found() {
@@ -592,8 +554,6 @@ mod tests {
     assert_eq!(v["valid"], true);
     assert_eq!(v["systemData"]["timestamp"], 999);
   }
-
-  // --- session save ---------------------------------------------------------
 
   #[test]
   fn test_session_get_not_found() {
@@ -706,8 +666,6 @@ mod tests {
     assert_eq!(r.body, "true");
   }
 
-  // --- updateall ------------------------------------------------------------
-
   #[test]
   fn test_updateall() {
     let dir = tempfile::tempdir().unwrap();
@@ -753,8 +711,6 @@ mod tests {
     );
     assert_eq!(r.status, 400);
   }
-
-  // --- misc -----------------------------------------------------------------
 
   #[test]
   fn test_titlestats() {

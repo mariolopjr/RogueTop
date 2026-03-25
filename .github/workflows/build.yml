@@ -3,20 +3,21 @@ name: Build
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - '.github/workflows/build.yml'
       - 'package.json'
       - 'src-tauri/**/*'
       - 'src/**/*'
   pull_request:
+    branches: [main]
     paths:
       - '.github/workflows/build.yml'
       - 'package.json'
       - 'src-tauri/**/*'
       - 'src/**/*'
-  # Nightly release
   schedule:
-    - cron: '0 0 * * *'
+    - cron: '0 5 * * *'
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
@@ -26,7 +27,33 @@ env:
   CARGO_INCREMENTAL: 0
 
 jobs:
+  check-version:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_release_version: ${{ steps.check.outputs.should_release_version }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Check latest PokeRogue version
+        id: check
+        run: |
+          LATEST=$(gh api repos/pagefaultgames/pokerogue/releases/latest --jq '.tag_name')
+          echo "Latest PokeRogue version: $LATEST"
+          echo "version=$LATEST" >> $GITHUB_OUTPUT
+
+          if gh release view "$LATEST" --repo "$GITHUB_REPOSITORY" &>/dev/null; then
+            echo "Release $LATEST already exists, skipping versioned release"
+            echo "should_release_version=false" >> $GITHUB_OUTPUT
+          else
+            echo "New version $LATEST detected, will create versioned release"
+            echo "should_release_version=true" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
+    needs: [check-version]
     runs-on: ${{ matrix.config.platform }}
 
     strategy:
@@ -49,19 +76,16 @@ jobs:
             target: 'x86_64-pc-windows-msvc'
           - platform: windows-latest
             target: 'aarch64-pc-windows-msvc'
-        
+
         features:
           - 'default'
           - 'offline'
 
     steps:
-      - uses: actions-rust-lang/setup-rust-toolchain@v1.8
-      - uses: pnpm/action-setup@v3
-        with:
-          version: latest
-
       - name: Checkout
         uses: actions/checkout@v4
+      - uses: actions-rust-lang/setup-rust-toolchain@v1.8
+      - uses: pnpm/action-setup@v3
 
       - name: Setup node
         uses: actions/setup-node@v4
@@ -81,7 +105,12 @@ jobs:
       - name: (Linux) ARM sources.list
         if: matrix.config.target == 'aarch64-unknown-linux-gnu' || matrix.config.target == 'armv7-unknown-linux-gnueabihf'
         run: |
-          # Add [arch=amd64] to the initial entries of the sources.list
+          # Restrict default sources to amd64 only
+          # Ubuntu Noble uses DEB822 format in ubuntu.sources; traditional sources.list is empty
+          if [ -f /etc/apt/sources.list.d/ubuntu.sources ]; then
+            sudo sed -i '/^Types: deb$/a Architectures: amd64' /etc/apt/sources.list.d/ubuntu.sources
+          fi
+          # Also handle traditional format for compatibility
           sudo sed -i 's/^deb /deb [arch=amd64] /' /etc/apt/sources.list
 
           echo "deb [arch=armhf,arm64] http://ports.ubuntu.com/ubuntu-ports/ $(lsb_release -cs) main restricted" | sudo tee -a /etc/apt/sources.list
@@ -115,13 +144,15 @@ jobs:
             wget \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            pkg-config
 
       - name: (Linux) (ARMv7) Install dependencies
         if: matrix.config.target == 'armv7-unknown-linux-gnueabihf'
         run: |
-          sudo apt-get install -y \
+          sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" \
             libc6:armhf \
+            libsystemd0:armhf \
             libudev-dev:armhf \
             libwebkit2gtk-4.1-dev:armhf \
             libssl-dev:armhf \
@@ -131,8 +162,9 @@ jobs:
       - name: (Linux) (ARM64) Install dependencies
         if: matrix.config.target == 'aarch64-unknown-linux-gnu'
         run: |
-          sudo apt-get install -y \
+          sudo apt-get install -y -o Dpkg::Options::="--force-overwrite" \
             libc6:arm64 \
+            libsystemd0:arm64 \
             libudev-dev:arm64 \
             libwebkit2gtk-4.1-dev:arm64 \
             libssl-dev:arm64 \
@@ -150,14 +182,21 @@ jobs:
 
       - name: (Offline) (Windows) If we are building the offline version, bootstrap PokeRogue locally
         if: matrix.features == 'offline' && matrix.config.platform == 'windows-latest'
+        shell: bash
         run: |
-          git clone https://github.com/pagefaultgames/pokerogue.git src-ext --depth 1
+          POKEROGUE_VERSION="${{ needs.check-version.outputs.version }}"
+          git clone --recurse-submodules -j8 --depth 1 ${POKEROGUE_VERSION:+--branch "$POKEROGUE_VERSION"} https://github.com/pagefaultgames/pokerogue.git src-ext
 
           cd src-ext
 
           pnpm install
-          echo VITE_BYPASS_LOGIN="1" > .env
-          pnpm build
+
+          # Set offline-mode vars (idempotent: remove stale values first, then append)
+          grep -v '^VITE_BYPASS_LOGIN=\|^VITE_SERVER_URL=' .env > .env.tmp 2>/dev/null || true
+          mv .env.tmp .env 2>/dev/null || true
+          printf '\nVITE_BYPASS_LOGIN=1\nVITE_SERVER_URL=http://localhost:8001\n' >> .env
+
+          pnpm build --mode app
 
           cd dist
           7z a -tzip -mx5 -r ../../game.dat *
@@ -165,13 +204,15 @@ jobs:
       - name: (Offline) (Unix) If we are building the offline version, bootstrap PokeRogue locally
         if: matrix.features == 'offline' && matrix.config.platform != 'windows-latest'
         run: chmod +x ./bootstrap_pokerogue.sh && ./bootstrap_pokerogue.sh
+        env:
+          POKEROGUE_BRANCH: ${{ needs.check-version.outputs.version }}
 
       # For lite installs
       - name: (Online) Create empty resource
         if: matrix.features != 'offline'
         run: |
           touch game.dat
-  
+
       - name: (Most) Build
         # If we are compiling for Windows ARM, we can only support NSIS
         run: pnpm tauri build --target ${{ matrix.config.target }} ${{ matrix.config.target == 'aarch64-pc-windows-msvc' && '--bundles nsis' || '' }} ${{ matrix.config.target == 'x86_64-unknown-linux-gnu' && '--bundles deb' || '' }} --features ${{ matrix.features }}
@@ -201,7 +242,7 @@ jobs:
       # For portable installs
       - name: Create empty config.json
         run: cd src-tauri/target/${{ matrix.config.target }}/release && echo {} > config.json
-        
+
       # paths:
       # Windows:
       # - src-tauri/target/${{ matrix.config.target }}/release/PokeRogue.exe
@@ -211,7 +252,7 @@ jobs:
       # - src-tauri/target/${{ matrix.config.target }}/release/bundle/macos/PokeRogue.app
       - name: (Windows) Compress build
         if: matrix.config.platform == 'windows-latest'
-        run: cd src-tauri/target/${{ matrix.config.target }}/release && 7z a -tzip -mx9 RogueTop.zip 
+        run: cd src-tauri/target/${{ matrix.config.target }}/release && 7z a -tzip -mx9 RogueTop.zip
           PokeRogue.exe
           config.json
           _up_
@@ -283,9 +324,11 @@ jobs:
           path: src-tauri/target/${{ matrix.config.target }}/release/bundle/dmg/*.dmg
 
   release:
-    needs: build
+    needs: [build, check-version]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule'
+    permissions:
+      contents: write
+    if: needs.build.result == 'success' && (startsWith(github.ref, 'refs/tags/') || github.event_name == 'schedule')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -308,17 +351,17 @@ jobs:
           for folder in $folders; do
             # Get the list of files in the folder
             files=$(ls "$folder_name/$folder")
-          
+
             for file in $files; do
               # Get the filename without extension
               filename="${file%.*}"
-          
+
               # Get the extension (everything after the last dot)
               extension="${file##*.}"
-          
+
               # Build the new filename with parent folder name and extension
               new_filename="$folder_name/$folder/$folder.$extension"
-          
+
               # Rename the file
               mv "$folder_name/$folder/$file" "$new_filename"
             done
@@ -326,7 +369,7 @@ jobs:
 
       - name: Create release using all artifacts
         uses: softprops/action-gh-release@v2
-        if: github.event_name != 'schedule'
+        if: startsWith(github.ref, 'refs/tags/')
         with:
           files: artifacts/**
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -336,10 +379,32 @@ jobs:
           generate_release_notes: true
           prerelease: false
 
-      # (nightly) upload artifacts to the nightly release
-      - name: Upload nightly artifacts
+      - name: Get current date
         if: github.event_name == 'schedule'
-        run:
-          gh release upload nightly artifacts/**/* --clobber
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        id: date
+        run: echo "date=$(date -u +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Publish nightly prerelease
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'schedule'
+        with:
+          files: artifacts/**
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: nightly-${{ steps.date.outputs.date }}
+          name: Nightly ${{ steps.date.outputs.date }}
+          prerelease: true
+          generate_release_notes: false
+
+      - name: Create versioned release for new PokeRogue version
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'schedule' && needs.check-version.outputs.should_release_version == 'true'
+        with:
+          files: artifacts/**
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ needs.check-version.outputs.version }}
+          name: ${{ needs.check-version.outputs.version }}
+          body: |
+            Automated build for PokeRogue ${{ needs.check-version.outputs.version }}.
+          draft: false
+          generate_release_notes: true
+          prerelease: false
