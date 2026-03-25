@@ -4,11 +4,20 @@ use std::fs;
 use crate::log;
 use crate::util::paths::get_config_dir;
 
+#[derive(Serialize, Deserialize, Clone, Default)]
+pub struct PendingMigration {
+  pub action: String, // "copy" | "move"
+  pub from: String,
+  pub to: String,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 pub struct Config {
   pub skip_splash: Option<bool>,
   pub offline: Option<bool>,
   pub rpc: Option<bool>,
+  pub name: Option<String>,
+  pub pending_migration: Option<PendingMigration>,
 }
 
 pub fn init() {
@@ -39,6 +48,8 @@ pub fn default_config() -> Config {
     skip_splash: Some(false),
     offline: Some(false),
     rpc: Some(true),
+    name: Some("Guest".to_string()),
+    pending_migration: None,
   }
 }
 

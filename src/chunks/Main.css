@@ -56,3 +56,27 @@
 .cbx-setting label:not(.checkbox-box) {
   width: 90%;
 }
+
+.name-setting {
+  width: 80%;
+  margin-top: 1em;
+}
+
+.name-btn {
+  width: 100%;
+  background: var(--secondary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 0.45em 0.8em;
+  font-size: 0.9em;
+  font-family: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.1s ease-in-out;
+}
+
+.name-btn:hover {
+  background: var(--button-primary);
+}

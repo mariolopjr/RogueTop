@@ -22,6 +22,29 @@ async function init() {
   // passes and updateUserInfo() calls our /account/info endpoint (returns Guest)
   if (isOffline) {
     document.cookie = 'pokerogue_sessionId=offline; path=/'
+
+    // Execute any pending localStorage key migration (from a username rename)
+    // @ts-expect-error womp womp
+    const config: Config = await __TAURI_INTERNALS__.invoke('get_config')
+    if (config.pending_migration) {
+      const { action, from, to } = config.pending_migration
+      const KEYS = [
+        'data', 'sessionData', 'sessionData1', 'sessionData2',
+        'sessionData3', 'sessionData4', 'runHistoryData', 'starterPrefs',
+      ]
+      for (const key of KEYS) {
+        const oldVal = localStorage.getItem(`${key}_${from}`)
+        if (oldVal !== null) {
+          localStorage.setItem(`${key}_${to}`, oldVal)
+          if (action === 'move') localStorage.removeItem(`${key}_${from}`)
+        }
+      }
+      config.pending_migration = null
+      // @ts-expect-error womp womp
+      await __TAURI_INTERNALS__.invoke('write_config_file', {
+        contents: JSON.stringify(config),
+      })
+    }
   }
 
   // Register binds

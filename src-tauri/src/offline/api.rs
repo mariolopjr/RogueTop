@@ -106,7 +106,16 @@ pub fn handle_request(request: &mut Request) -> HandlerResponse {
     .collect();
 
   let method = request.method().as_str();
-  let saves_dir = crate::util::paths::get_saves_dir();
+  let base_saves_dir = crate::util::paths::get_saves_dir();
+
+  // One-time migration: move flat saves into saves/Guest/ subdirectory
+  migrate_flat_saves(&base_saves_dir);
+
+  let username = crate::config::get_config()
+    .name
+    .unwrap_or_else(|| "Guest".to_string());
+  let saves_dir = base_saves_dir.join(&username);
+  fs::create_dir_all(&saves_dir).ok();
 
   route_request(method, path, &params, &body, &saves_dir)
 }
@@ -119,11 +128,24 @@ pub fn route_request(
   saves_dir: &Path,
 ) -> HandlerResponse {
   match (method, path) {
-    ("GET", "account/info") => HandlerResponse {
-      status: 200,
-      body: r#"{"username":"Guest","lastSessionSlot":-1,"discordId":"","googleId":"","hasAdminRole":false}"#.to_string(),
-      content_type: "application/json",
-    },
+    ("GET", "account/info") => {
+      let username = crate::config::get_config()
+        .name
+        .unwrap_or_else(|| "Guest".to_string());
+      let body = serde_json::json!({
+        "username": username,
+        "lastSessionSlot": -1,
+        "discordId": "",
+        "googleId": "",
+        "hasAdminRole": false,
+      })
+      .to_string();
+      HandlerResponse {
+        status: 200,
+        body,
+        content_type: "application/json",
+      }
+    }
 
     ("POST", "account/login") => HandlerResponse {
       status: 200,
@@ -151,15 +173,13 @@ pub fn route_request(
       }
     }
 
-    ("POST", "savedata/system/update") => {
-      match fs::write(saves_dir.join("system.json"), body) {
-        Ok(_) => ok_empty(),
-        Err(e) => {
-          warn!("Failed to write system.json: {:?}", e);
-          error_response("failed to write system save")
-        }
+    ("POST", "savedata/system/update") => match fs::write(saves_dir.join("system.json"), body) {
+      Ok(_) => ok_empty(),
+      Err(e) => {
+        warn!("Failed to write system.json: {:?}", e);
+        error_response("failed to write system save")
       }
-    }
+    },
 
     ("GET", "savedata/system/verify") => {
       let file = saves_dir.join("system.json");
@@ -271,7 +291,10 @@ pub fn route_request(
             saves_dir.join(format!("session_{}.json", slot)),
             &session_str,
           ) {
-            warn!("Failed to write session_{}.json in updateall: {:?}", slot, e);
+            warn!(
+              "Failed to write session_{}.json in updateall: {:?}",
+              slot, e
+            );
             return error_response("failed to write session save");
           }
         }
@@ -301,6 +324,87 @@ pub fn route_request(
         status: 404,
         body: String::new(),
         content_type: "text/plain",
+      }
+    }
+  }
+}
+
+/// One-time migration: if flat JSON files exist in the saves root, move them into saves/Guest
+fn migrate_flat_saves(saves_dir: &Path) {
+  let sentinel = saves_dir.join("system.json");
+  if !sentinel.exists() {
+    return;
+  }
+  let guest_dir = saves_dir.join("Guest");
+  if let Err(e) = fs::create_dir_all(&guest_dir) {
+    warn!("migrate_flat_saves: failed to create Guest dir: {:?}", e);
+    return;
+  }
+  let entries = match fs::read_dir(saves_dir) {
+    Ok(e) => e,
+    Err(e) => {
+      warn!("migrate_flat_saves: failed to read saves dir: {:?}", e);
+      return;
+    }
+  };
+  for entry in entries.flatten() {
+    let path = entry.path();
+    if path.extension().map(|x| x == "json").unwrap_or(false) {
+      let dest = guest_dir.join(entry.file_name());
+      if let Err(e) = fs::rename(&path, &dest) {
+        warn!("migrate_flat_saves: failed to move {:?}: {:?}", path, e);
+      }
+    }
+  }
+}
+
+/// List all usernames that have a save directory under the saves root
+#[tauri::command]
+pub fn get_known_names() -> Vec<String> {
+  let saves_dir = crate::util::paths::get_saves_dir();
+  fs::read_dir(&saves_dir)
+    .into_iter()
+    .flatten()
+    .filter_map(|e| {
+      let e = e.ok()?;
+      if e.file_type().ok()?.is_dir() {
+        e.file_name().into_string().ok()
+      } else {
+        None
+      }
+    })
+    .collect()
+}
+
+/// Copy or move the per-user save directory from one name to another
+#[tauri::command]
+pub fn migrate_saves(action: String, from: String, to: String) {
+  let saves_dir = crate::util::paths::get_saves_dir();
+  let src = saves_dir.join(&from);
+  let dst = saves_dir.join(&to);
+  if !src.exists() {
+    return;
+  }
+  if action == "move" {
+    if let Err(e) = fs::rename(&src, &dst) {
+      warn!("migrate_saves: rename failed: {:?}", e);
+    }
+  } else if action == "copy" {
+    if let Err(e) = fs::create_dir_all(&dst) {
+      warn!("migrate_saves: create_dir_all failed: {:?}", e);
+      return;
+    }
+    let entries = match fs::read_dir(&src) {
+      Ok(e) => e,
+      Err(e) => {
+        warn!("migrate_saves: read_dir failed: {:?}", e);
+        return;
+      }
+    };
+    for entry in entries.flatten() {
+      let dest_file = dst.join(entry.file_name());
+      if let Err(e) = fs::copy(entry.path(), &dest_file) {
+        warn!("migrate_saves: copy {:?} failed: {:?}", entry.path(), e);
       }
     }
   }

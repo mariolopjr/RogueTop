@@ -131,6 +131,10 @@ pub fn run() {
     .invoke_handler(tauri::generate_handler![
       #[cfg(feature = "offline")]
       offline::api::api_request,
+      #[cfg(feature = "offline")]
+      offline::api::get_known_names,
+      #[cfg(feature = "offline")]
+      offline::api::migrate_saves,
       util::is_dev,
       util::screen::toggle_fullscreen,
       util::support::supports_offline,
