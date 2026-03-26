@@ -266,9 +266,9 @@ jobs:
         if: matrix.config.platform == 'ubuntu-latest'
         run: |
           cd src-tauri/target/${{ matrix.config.target }}/release
-          EXTRA=""
-          if [ -d "_up_" ]; then EXTRA="_up_"; fi
-          tar -czvf roguetop.tar.gz poke-rogue config.json $EXTRA
+          UP_DIR=""
+          if [ -d "_up_" ]; then UP_DIR="_up_"; fi
+          tar -czvf roguetop.tar.gz poke-rogue config.json $UP_DIR
 
       # Windows portable
       - name: (Windows) Upload portable
