@@ -260,8 +260,8 @@ jobs:
           config.json
           _up_
 
-        # Need to check for `_up_` dir since AppImage isn't built for armv7 so this directory
-        # doesn't exist in that pipeline and then errors out
+      # Need to check for `_up_` dir since AppImage isn't built for armv7 so this directory
+      # doesn't exist in that pipeline and then errors out
       - name: (Linux) Compress build
         if: matrix.config.platform == 'ubuntu-latest'
         run: |
