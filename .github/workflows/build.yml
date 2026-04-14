@@ -256,7 +256,7 @@ jobs:
       - name: (Windows) Compress build
         if: matrix.config.platform == 'windows-latest'
         run: cd src-tauri/target/${{ matrix.config.target }}/release && 7z a -tzip -mx9 RogueTop.zip
-          PokeRogue.exe
+          roguetop.exe
           config.json
           _up_
 
