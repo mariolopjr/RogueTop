@@ -260,15 +260,13 @@ jobs:
           config.json
           _up_
 
-      # Need to check for `_up_` dir since AppImage isn't built for armv7 so this directory
-      # doesn't exist in that pipeline and then errors out
       - name: (Linux) Compress build
         if: matrix.config.platform == 'ubuntu-latest'
         run: |
           cd src-tauri/target/${{ matrix.config.target }}/release
           UP_DIR=""
           if [ -d "_up_" ]; then UP_DIR="_up_"; fi
-          tar -czvf roguetop.tar.gz poke-rogue config.json $UP_DIR
+          tar -czvf roguetop.tar.gz roguetop config.json $UP_DIR
 
       # Windows portable
       - name: (Windows) Upload portable
