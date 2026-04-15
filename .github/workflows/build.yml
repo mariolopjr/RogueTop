@@ -256,13 +256,17 @@ jobs:
       - name: (Windows) Compress build
         if: matrix.config.platform == 'windows-latest'
         run: cd src-tauri/target/${{ matrix.config.target }}/release && 7z a -tzip -mx9 RogueTop.zip
-          PokeRogue.exe
+          roguetop.exe
           config.json
           _up_
 
       - name: (Linux) Compress build
         if: matrix.config.platform == 'ubuntu-latest'
-        run: cd src-tauri/target/${{ matrix.config.target }}/release && tar -czvf roguetop.tar.gz poke-rogue config.json _up_
+        run: |
+          cd src-tauri/target/${{ matrix.config.target }}/release
+          UP_DIR=""
+          if [ -d "_up_" ]; then UP_DIR="_up_"; fi
+          tar -czvf roguetop.tar.gz roguetop config.json $UP_DIR
 
       # Windows portable
       - name: (Windows) Upload portable
