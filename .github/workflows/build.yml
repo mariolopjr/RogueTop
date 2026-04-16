@@ -18,6 +18,7 @@ on:
       - 'src/**/*'
   schedule:
     - cron: '0 5 * * *'
+    - cron: '0 */6 * * *'
 
 concurrency:
   group: ${{ github.ref }}-${{ github.workflow }}
@@ -54,6 +55,10 @@ jobs:
 
   build:
     needs: [check-version]
+    if: |
+      github.event_name != 'schedule' ||
+      github.event.schedule == '0 5 * * *' ||
+      needs.check-version.outputs.should_release_version == 'true'
     runs-on: ${{ matrix.config.platform }}
 
     strategy:
@@ -387,13 +392,13 @@ jobs:
           prerelease: false
 
       - name: Get current date
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 5 * * *'
         id: date
         run: echo "date=$(date -u +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
       - name: Publish nightly prerelease
         uses: softprops/action-gh-release@v2
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' && github.event.schedule == '0 5 * * *'
         with:
           files: artifacts/**
           token: ${{ secrets.GITHUB_TOKEN }}
