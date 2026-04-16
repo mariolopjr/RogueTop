@@ -12,6 +12,7 @@ Version release notes also requires NEW_VERSION
 
 import json
 import os
+import re
 import sys
 import urllib.request
 
@@ -54,11 +55,20 @@ def _next_page(link_header: str) -> str | None:
     return None
 
 
-def format_commits(commits: list) -> list[str]:
+_PR_REF = re.compile(r"#(\d+)")
+
+
+def format_commits(commits: list, link_repo: str | None = None) -> list[str]:
     lines = []
     for c in commits:
         msg = c["commit"]["message"].split("\n", 1)[0]
-        lines.append(f"* {msg} ({c['sha'][:7]})")
+        sha = c["sha"][:7]
+        if link_repo:
+            msg = _PR_REF.sub(rf"[#\1](https://github.com/{link_repo}/issues/\1)", msg)
+            sha_md = f"[{sha}](https://github.com/{link_repo}/commit/{c['sha']})"
+        else:
+            sha_md = sha
+        lines.append(f"* {msg} ({sha_md})")
     return lines or ["No commits"]
 
 
@@ -99,7 +109,7 @@ def nightly_body() -> str:
     out.extend(format_commits(compare_commits(repo, prev["tag_name"], head)))
 
     out.extend(["", "## What's Changed in PokeRogue", ""])
-    out.extend(format_commits(commits_since(UPSTREAM, prev["created_at"])))
+    out.extend(format_commits(commits_since(UPSTREAM, prev["created_at"]), UPSTREAM))
 
     return "\n".join(out) + "\n"
 
@@ -120,7 +130,7 @@ def versioned_body() -> str:
 
     pokerogue_header = f"## What's Changed in PokeRogue ({prev} -> {new_version})"
     out.extend(["", pokerogue_header, ""])
-    out.extend(format_commits(compare_commits(UPSTREAM, prev, new_version)))
+    out.extend(format_commits(compare_commits(UPSTREAM, prev, new_version), UPSTREAM))
 
     return "\n".join(out) + "\n"
 
