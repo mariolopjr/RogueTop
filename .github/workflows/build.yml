@@ -396,6 +396,12 @@ jobs:
         id: date
         run: echo "date=$(date -u +'%Y-%m-%d')" >> $GITHUB_OUTPUT
 
+      - name: Generate nightly release notes
+        if: github.event_name == 'schedule' && github.event.schedule == '0 5 * * *'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: python3 .github/scripts/release_notes.py nightly > nightly_body.md && cat nightly_body.md
+
       - name: Publish nightly prerelease
         uses: softprops/action-gh-release@v2
         if: github.event_name == 'schedule' && github.event.schedule == '0 5 * * *'
@@ -404,8 +410,16 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: nightly-${{ steps.date.outputs.date }}
           name: Nightly ${{ steps.date.outputs.date }}
+          body_path: nightly_body.md
           prerelease: true
           generate_release_notes: false
+
+      - name: Generate versioned release notes
+        if: github.event_name == 'schedule' && needs.check-version.outputs.should_release_version == 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NEW_VERSION: ${{ needs.check-version.outputs.version }}
+        run: python3 .github/scripts/release_notes.py versioned > versioned_body.md && cat versioned_body.md
 
       - name: Create versioned release for new PokeRogue version
         uses: softprops/action-gh-release@v2
@@ -415,8 +429,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag_name: ${{ needs.check-version.outputs.version }}
           name: ${{ needs.check-version.outputs.version }}
-          body: |
-            Automated build for PokeRogue ${{ needs.check-version.outputs.version }}.
+          body_path: versioned_body.md
           draft: false
-          generate_release_notes: true
+          generate_release_notes: false
           prerelease: false
